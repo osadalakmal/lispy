@@ -1,0 +1,7 @@
+*.o
+*.tsk
+.depend
+.cproject
+.project
+Debug
+
