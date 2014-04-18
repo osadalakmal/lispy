@@ -8,33 +8,34 @@ LD = g++
 CFLAGS = -g -Wall -I./
 CPPFLAGS = -g -Wall -I./ --std=c++0x
 RM = /bin/rm -f
-SRCS = $(wildcard src/*.cpp) $(wildcard src/*.c)  
+SRCS = $(wildcard src/*.c) $(wildcard src/*.cpp)  
 OBJS = $(patsubst %.cpp,%.o,$(patsubst %.c,%.o ,$(SRCS)))
-DEPS = $(patsubst %d,%o,$(OBJS))
+DEPS = $(OBJS:.o=.d)
 PROG = lispy.tsk
+-include $(DEPS)
 
 all: $(PROG)
 
-$(PROG): $(OBJS) $(DEPS)
+$(PROG): $(OBJS)
 	$(LD) $(OBJS) -o $(PROG) $(LDFLAGS)
 
 %.o: %.cpp
-	$(CXX) $(CPPFLAGS) -c $< -o $@
+	$(CXX) -c $(CPPFLAGS) $< -o $*.o
+	$(CXX) -MM $(CPPFLAGS) $< > $*.d
+	@mv -f $*.d $*.d.tmp
+	@sed -e 's|.*:|$*.o:|' < $*.d.tmp > $*.d
+	@sed -e 's/.*://' -e 's/\\$$//' < $*.d.tmp | fmt -1 | \
+	  sed -e 's/^ *//' -e 's/$$/:/' >> $*.d
+	@rm -f $*.d.tmp
 	
 %.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
-	
-%.d: %.c
-	@set -e; rm -f $@; \
-	$(CC) -M $(CFLAGS) $< > $@.$$$$; \
-	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
-	rm -f $@.$$$$
-	
-%.d: %.cpp
-	@set -e; rm -f $@; \
-	$(CXX) -M $(CPPFLAGS) $< > $@.$$$$; \
-	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
-	rm -f $@.$$$$
+	$(CC) -c $(CFLAGS) $< -o $*.o
+	$(CC) -MM $(CFLAGS) $< > $*.d
+	@mv -f $*.d $*.d.tmp
+	@sed -e 's|.*:|$*.o:|' < $*.d.tmp > $*.d
+	@sed -e 's/.*://' -e 's/\\$$//' < $*.d.tmp | fmt -1 | \
+	  sed -e 's/^ *//' -e 's/$$/:/' >> $*.d
+	@rm -f $*.d.tmp
 	
 clean:
-	$(RM) $(PROG) $(OBJS)
+	$(RM) $(PROG) $(OBJS) $(DEPS)
