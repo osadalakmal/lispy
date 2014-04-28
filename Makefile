@@ -6,7 +6,7 @@ CPLUS_INCLUDE_PATH=$(shell echo "/usr/include/$(gcc -print-multiarch)")
 LDFLAGS := -lreadline
 LD = g++
 CFLAGS = -g -Wall -I./
-CPPFLAGS = -g -Wall -I./ --std=c++0x
+CPPFLAGS = -g -Wall -I./ -I/home/osada/progs/boost_1_55_0 --std=c++0x 
 RM = /bin/rm -f
 SRCS = $(wildcard src/*.c) $(wildcard src/*.cpp)  
 OBJS = $(patsubst %.cpp,%.o,$(patsubst %.c,%.o ,$(SRCS)))
