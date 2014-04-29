@@ -4,12 +4,17 @@ extern "C" {
 #include "mpc.h"
 }
 #include <boost/variant.hpp>
+#include <boost/lambda/construct.hpp>
+#include <boost/variant/recursive_wrapper.hpp>
 #include <readline/readline.h>
 #include <readline/history.h>
 #include <string>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <iterator>
+#include <algorithm>
+#include <cassert>
 
 class MpcParser {
 	std::shared_ptr<mpc_parser_t> d_parser;
@@ -34,7 +39,73 @@ public:
 
 };
 
-typedef boost::variant<LispError, int64_t, std::string> LispResultType;
+class LispSExpr;
+
+typedef boost::make_recursive_variant<LispError, int64_t, LispSExpr, std::vector<boost::recursive_variant_> >::type LispResultType;
+typedef std::shared_ptr<LispResultType> LispResultPtr;
+
+class LispSExpr {
+public:
+	std::string d_symbol;
+	LispSExpr(const std::string& symbol) : d_symbol(symbol) {}
+};
+
+typedef std::vector<LispResultType> LispSExprVec;
+
+LispResultType newLRTInt(int64_t num) {
+	return LispResultType(num);
+}
+
+LispResultType newLRTError(LispError::ERROR_TYPE errType, const std::string& errStr) {
+	return LispResultType(LispError(errType,errStr));
+}
+
+LispResultType newLRTSym(const std::string& symbol) {
+	return LispSExpr(symbol);
+}
+
+LispResultType getNum(mpc_ast_t* t) {
+	int errno;
+	int64_t x = strtol(t->contents, NULL, 10);
+	return errno != ERANGE ? newLRTInt(x) : newLRTError(LispError::LERR_BAD_NUM, "Bad number parsed");
+}
+
+LispResultType getLispResultAst(mpc_ast_t* t) {
+	/* If Symbol or Number return conversion to that type */
+	if (strstr(t->tag, "number")) {
+		return getNum(t);
+	}
+	if (strstr(t->tag, "symbol")) {
+		return newLRTSym(t->contents);
+	}
+
+	/* If root (>) or sexpr then create empty list */
+	LispResultType x = LispSExprVec();
+	//if (strcmp(t->tag, ">") == 0) { x = LispSExprVec(); }
+	//if (strstr(t->tag, "sexpr"))  { x = LispSExprVec(); }
+	/* Fill this list with any valid expression contained within */
+	for (int i = 0; i < t->children_num; i++) {
+		if (strcmp(t->children[i]->contents, "(") == 0) {
+			continue;
+		}
+		if (strcmp(t->children[i]->contents, ")") == 0) {
+			continue;
+		}
+		if (strcmp(t->children[i]->contents, "}") == 0) {
+			continue;
+		}
+		if (strcmp(t->children[i]->contents, "{") == 0) {
+			continue;
+		}
+		if (strcmp(t->children[i]->tag, "regex") == 0) {
+			continue;
+		}
+		boost::get<LispSExprVec>(x).push_back(getLispResultAst(t->children[i]));
+	}
+
+	return LispResultType(x);
+}
+
 
 
 /* Use operator string to see which operation to perform */
@@ -61,7 +132,7 @@ LispResultType eval_op(LispResultType& x, char* op, const LispResultType& y) {
 			}
 		}
 	}
-	return 0;
+	return x;
 }
 
 LispResultType eval(mpc_ast_t* t) {
@@ -83,7 +154,7 @@ LispResultType eval(mpc_ast_t* t) {
 		try {
 			x = eval_op(x, op, eval(t->children[i]));
 		} catch (const std::exception& ex){
-			x = LispResultType(ex.what());
+			x = LispResultType(LispError(LispError::LERR_BAD_OP,ex.what()));
 		}
 		i++;
 	}
