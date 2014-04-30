@@ -106,6 +106,33 @@ LispResultType getLispResultAst(mpc_ast_t* t) {
 	return LispResultType(x);
 }
 
+class LispResultPrinter : public boost::static_visitor<> {
+	std::ostream& d_os;
+public:
+	LispResultPrinter(std::ostream& os) : d_os(os) {}
+
+	void operator()(int64_t i) const {
+		d_os << " " << i;
+	}
+
+	void operator()(LispError err) const {
+		d_os << " [" << err.d_errCode << ". " << err.d_errStr;
+	}
+
+	void operator()(LispSExpr sExpr) const {
+		d_os << " " << sExpr.d_symbol;
+	}
+
+	void operator()(LispSExprVec sExprVec) {
+		for(LispSExprVec::iterator it = sExprVec.begin(); it != sExprVec.end(); it++) {
+			if (it->which() == 3)
+				this->d_os << " (";
+			boost::apply_visitor(*const_cast<LispResultPrinter*>(this), *it);
+			if (it->which() == 3)
+				this->d_os << ")";
+		}
+	}
+};
 
 
 /* Use operator string to see which operation to perform */
@@ -136,51 +163,31 @@ LispResultType eval_op(LispResultType& x, char* op, const LispResultType& y) {
 }
 
 LispResultType eval(mpc_ast_t* t) {
-
-	/* If tagged as number return it directly, otherwise expression. */
-	if (strstr(t->tag, "number")) {
-		return LispResultType(atoi(t->contents));
-	}
-
-	/* The operator is always second child. */
-	char* op = t->children[1]->contents;
-
-	/* We store the third child in `x` */
-	LispResultType x = eval(t->children[2]);
-
-	/* Iterate the remaining children, combining using our operator */
-	int i = 3;
-	while (strstr(t->children[i]->tag, "expr")) {
-		try {
-			x = eval_op(x, op, eval(t->children[i]));
-		} catch (const std::exception& ex){
-			x = LispResultType(LispError(LispError::LERR_BAD_OP,ex.what()));
-		}
-		i++;
-	}
-
-	return x;
+	LispResultType res = getLispResultAst(t);
+	LispResultPrinter printer(std::cout);
+	std::cout << "(";
+	boost::apply_visitor( printer, res);
+	std::cout << ")\n";
+	return res;
 }
 
 int main(int argc, char** argv) {
 
-	/* Create Some Parsers */
 	MpcParser Number("number");
-	MpcParser RealNum("real_num");
-	MpcParser Operator("operator");
+	MpcParser Symbol("symbol");
+	MpcParser Sexpr("sexpr");
 	MpcParser Expr("expr");
 	MpcParser Lispy("lispy");
 
-	/* Define them with the following Language */
 	mpca_lang(MPCA_LANG_DEFAULT,
-			"                                               \
-		real_num : /-?[0-9]*\\.[0-9]+/ ;                    \
-	    number   : /-?[0-9]+/ ;                             \
-	    operator : '+' | '-' | '*' | '/' | '%' ;            \
-	    expr     : <real_num> | <number> | '(' <operator> <expr>+ ')' ;  \
-	    lispy    : /^/ <operator> <expr>+ /$/ ;             \
+	  "                                          \
+	    number : /-?[0-9]+/ ;                    \
+	    symbol : '+' | '-' | '*' | '/' ;         \
+	    sexpr  : '(' <expr>* ')' ;               \
+	    expr   : <number> | <symbol> | <sexpr> ; \
+	    lispy  : /^/ <expr>* /$/ ;               \
 	  ",
-			RealNum.get(), Number.get(), Operator.get(), Expr.get(), Lispy.get());
+	  Number.get(), Symbol.get(), Sexpr.get(), Expr.get(), Lispy.get());
 
 	/* Print Version and Exit Information */
 	puts("Lispy Version 0.0.0.0.1");
@@ -202,13 +209,7 @@ int main(int argc, char** argv) {
 		if (mpc_parse("<stdin>", input, Lispy.get(), &r)) {
 			/* On Success Print the AST */
 			LispResultType result(0);
-			try {
-				result = eval((mpc_ast_t*)r.output);
-				printf("%lld\n", boost::get<int64_t>(result));
-			} catch (const std::exception& ex) {
-				LispError err = boost::get<LispError>(result);
-				printf("%s\n", err.d_errStr.c_str());
-			}
+			result = eval((mpc_ast_t*)r.output);
 			mpc_ast_delete((mpc_ast_t*) r.output);
 		} else {
 			/* Otherwise Print the Error */
