@@ -8,6 +8,7 @@ extern "C" {
 #include <boost/variant/recursive_wrapper.hpp>
 #include <readline/readline.h>
 #include <readline/history.h>
+#include <deque>
 #include <string>
 #include <cstdint>
 #include <functional>
@@ -30,7 +31,7 @@ public:
 class LispError {
 public:
 	enum ERROR_TYPE {
-		LERR_DIV_ZERO, LERR_BAD_OP, LERR_BAD_NUM
+		LERR_DIV_ZERO, LERR_BAD_OP, LERR_BAD_NUM, LERR_BAD_SYNTAX
 	};
 	ERROR_TYPE d_errCode;
 	std::string d_errStr;
@@ -39,18 +40,19 @@ public:
 
 };
 
-class LispSExpr;
+class LispSymbol;
 
-typedef boost::make_recursive_variant<LispError, int64_t, LispSExpr, std::vector<boost::recursive_variant_> >::type LispResultType;
+typedef boost::make_recursive_variant<LispError, int64_t, LispSymbol, std::deque<boost::recursive_variant_> >::type LispResultType;
 typedef std::shared_ptr<LispResultType> LispResultPtr;
 
-class LispSExpr {
+class LispSymbol {
 public:
 	std::string d_symbol;
-	LispSExpr(const std::string& symbol) : d_symbol(symbol) {}
+	LispSymbol(const std::string& symbol) : d_symbol(symbol) {}
 };
 
-typedef std::vector<LispResultType> LispSExprVec;
+LispResultType eval_op(LispResultType& x);LispResultType eval_op(LispResultType& x);
+typedef std::deque<LispResultType> LispSExprVec;
 
 LispResultType newLRTInt(int64_t num) {
 	return LispResultType(num);
@@ -61,7 +63,7 @@ LispResultType newLRTError(LispError::ERROR_TYPE errType, const std::string& err
 }
 
 LispResultType newLRTSym(const std::string& symbol) {
-	return LispSExpr(symbol);
+	return LispSymbol(symbol);
 }
 
 LispResultType getNum(mpc_ast_t* t) {
@@ -119,7 +121,7 @@ public:
 		d_os << " [" << err.d_errCode << ". " << err.d_errStr;
 	}
 
-	void operator()(LispSExpr sExpr) const {
+	void operator()(LispSymbol sExpr) const {
 		d_os << " " << sExpr.d_symbol;
 	}
 
@@ -134,32 +136,79 @@ public:
 	}
 };
 
+LispResultType evalSExpr(LispResultType res) {
+	if (res.which() == 3) {
+		return eval_op(res);
+	} else {
+		return res;
+	}
+}
+
+LispResultType builtin_op(LispResultType a, char* op) {
+
+  /* Ensure all arguments are numbers */
+	LispSExprVec resVec = boost::get<LispSExprVec>(a);
+  for (unsigned int i = 0; i < resVec.size(); i++) {
+    if (resVec[i].which() != 1) {
+      return LispError(LispError::LERR_BAD_SYNTAX, "Cannot operator on non number!");
+    }
+  }
+
+  /* Pop the first element */
+  LispResultType x = resVec.front();
+  resVec.pop_front();
+
+  /* If no arguments and sub then perform unary negation */
+  if ((strcmp(op, "-") == 0) && resVec.size() == 0) {
+	  x = -(boost::get<int64_t>(x));
+  }
+
+  /* While there are still elements remaining */
+  while (!resVec.empty()) {
+
+    /* Pop the next element */
+    LispResultType y = resVec.front();
+    resVec.pop_front();
+
+    /* Perform operation */
+    if (strcmp(op, "+") == 0) { boost::get<int64_t>(x) += boost::get<int64_t>(y); }
+    if (strcmp(op, "-") == 0) { boost::get<int64_t>(x) -= boost::get<int64_t>(y); }
+    if (strcmp(op, "*") == 0) { boost::get<int64_t>(x) *= boost::get<int64_t>(y); }
+    if (strcmp(op, "/") == 0) {
+      if (boost::get<int64_t>(y) == 0) {
+        x = LispError(LispError::LERR_DIV_ZERO, "Division By Zero!"); break;
+      }
+      boost::get<int64_t>(x) /= boost::get<int64_t>(y);
+    }
+  }
+
+  return x;
+}
 
 /* Use operator string to see which operation to perform */
-LispResultType eval_op(LispResultType& x, char* op, const LispResultType& y) {
-	if (x.which() == 0) {
-		return x;
-	} else if (y.which() == 0) {
-		return y;
-	} else {
-		if (strcmp(op, "+") == 0) {
-			return boost::get<int64_t>(x) + boost::get<int64_t>(y);
+LispResultType eval_op(LispResultType& x) {
+	try {
+		LispSExprVec results = boost::get<LispSExprVec>(x);
+		if (results.empty()) {
+			return x;
 		}
-		if (strcmp(op, "-") == 0) {
-			return boost::get<int64_t>(x) - boost::get<int64_t>(y);
-		}
-		if (strcmp(op, "*") == 0) {
-			return boost::get<int64_t>(x) * boost::get<int64_t>(y);
-		}
-		if (strcmp(op, "/") == 0) {
-			if ( boost::get<int64_t>(y) == 0) {
-				return LispResultType(LispError(LispError::LERR_DIV_ZERO,"Division by zero error"));
-			} else {
-				return boost::get<int64_t>(x) / boost::get<int64_t>(y);
+		for(LispSExprVec::iterator it = results.begin(); it != results.end(); it++) {
+			*it = evalSExpr(*it);
+			if ((*it).which() == 0) {
+				return *it;
 			}
 		}
+		if (results.size() == 1) {
+			return results[0];
+		}
+		if (results.front().which() == 2) {
+			results.pop_front();
+			return LispError(LispError::LERR_BAD_SYNTAX, "S-expression does not start with a syymbol!");
+		}
+
+	} catch (const std::exception& ex) {
+
 	}
-	return x;
 }
 
 LispResultType eval(mpc_ast_t* t) {
