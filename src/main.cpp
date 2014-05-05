@@ -44,6 +44,7 @@ class LispSymbol;
 
 typedef boost::make_recursive_variant<LispError, int64_t, LispSymbol, std::deque<boost::recursive_variant_> >::type LispResultType;
 typedef std::shared_ptr<LispResultType> LispResultPtr;
+LispResultType evalSExpr(LispResultType res);
 
 class LispSymbol {
 public:
@@ -51,7 +52,6 @@ public:
 	LispSymbol(const std::string& symbol) : d_symbol(symbol) {}
 };
 
-LispResultType eval_op(LispResultType& x);LispResultType eval_op(LispResultType& x);
 typedef std::deque<LispResultType> LispSExprVec;
 
 LispResultType newLRTInt(int64_t num) {
@@ -136,15 +136,7 @@ public:
 	}
 };
 
-LispResultType evalSExpr(LispResultType res) {
-	if (res.which() == 3) {
-		return eval_op(res);
-	} else {
-		return res;
-	}
-}
-
-LispResultType builtin_op(LispResultType a, char* op) {
+LispResultType builtin_op(LispResultType a, const char* op) {
 
   /* Ensure all arguments are numbers */
 	LispSExprVec resVec = boost::get<LispSExprVec>(a);
@@ -186,7 +178,7 @@ LispResultType builtin_op(LispResultType a, char* op) {
 }
 
 /* Use operator string to see which operation to perform */
-LispResultType eval_op(LispResultType& x) {
+LispResultType eval_op(LispResultType x) {
 	try {
 		LispSExprVec results = boost::get<LispSExprVec>(x);
 		if (results.empty()) {
@@ -201,23 +193,25 @@ LispResultType eval_op(LispResultType& x) {
 		if (results.size() == 1) {
 			return results[0];
 		}
-		if (results.front().which() == 2) {
+		if (results.front().which() != 2) {
 			results.pop_front();
 			return LispError(LispError::LERR_BAD_SYNTAX, "S-expression does not start with a syymbol!");
 		}
+		LispResultType f = results.front();
+		results.pop_front();
+		return builtin_op(results, (boost::get<LispSymbol>(f)).d_symbol.c_str());
 
 	} catch (const std::exception& ex) {
 
 	}
 }
 
-LispResultType eval(mpc_ast_t* t) {
-	LispResultType res = getLispResultAst(t);
-	LispResultPrinter printer(std::cout);
-	std::cout << "(";
-	boost::apply_visitor( printer, res);
-	std::cout << ")\n";
-	return res;
+LispResultType evalSExpr(LispResultType res) {
+	if (res.which() == 3) {
+		return eval_op(res);
+	} else {
+		return res;
+	}
 }
 
 int main(int argc, char** argv) {
@@ -257,8 +251,11 @@ int main(int argc, char** argv) {
 		mpc_result_t r;
 		if (mpc_parse("<stdin>", input, Lispy.get(), &r)) {
 			/* On Success Print the AST */
-			LispResultType result(0);
-			result = eval((mpc_ast_t*)r.output);
+			LispResultType result = eval_op(getLispResultAst((mpc_ast_t*)r.output));
+			LispResultPrinter printer(std::cout);
+			std::cout << "(";
+			boost::apply_visitor( printer, result);
+			std::cout << ")\n";
 			mpc_ast_delete((mpc_ast_t*) r.output);
 		} else {
 			/* Otherwise Print the Error */
