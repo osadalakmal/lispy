@@ -1,21 +1,6 @@
-#include <stdio.h>
-#include <stdlib.h>
-extern "C" {
-#include "mpc.h"
-}
-#include <boost/variant.hpp>
-#include <boost/lambda/construct.hpp>
-#include <boost/variant/recursive_wrapper.hpp>
-#include <readline/readline.h>
-#include <readline/history.h>
-#include <deque>
-#include <string>
-#include <cstdint>
-#include <functional>
-#include <memory>
-#include <iterator>
-#include <algorithm>
-#include <cassert>
+#include "lispy_elems.h"
+
+using namespace lispy;
 
 class MpcParser {
 	std::shared_ptr<mpc_parser_t> d_parser;
@@ -25,114 +10,6 @@ public:
 	}
 	mpc_parser_t* get() {
 		return d_parser.get();
-	}
-};
-
-class LispError {
-public:
-	enum ERROR_TYPE {
-		LERR_DIV_ZERO, LERR_BAD_OP, LERR_BAD_NUM, LERR_BAD_SYNTAX
-	};
-	ERROR_TYPE d_errCode;
-	std::string d_errStr;
-
-	LispError(ERROR_TYPE errType, const std::string& errStr) : d_errCode(errType), d_errStr(errStr) {}
-
-};
-
-class LispSymbol;
-
-typedef boost::make_recursive_variant<LispError, int64_t, LispSymbol, std::deque<boost::recursive_variant_> >::type LispResultType;
-typedef std::shared_ptr<LispResultType> LispResultPtr;
-LispResultType evalSExpr(LispResultType res);
-
-class LispSymbol {
-public:
-	std::string d_symbol;
-	LispSymbol(const std::string& symbol) : d_symbol(symbol) {}
-};
-
-typedef std::deque<LispResultType> LispSExprVec;
-
-LispResultType newLRTInt(int64_t num) {
-	return LispResultType(num);
-}
-
-LispResultType newLRTError(LispError::ERROR_TYPE errType, const std::string& errStr) {
-	return LispResultType(LispError(errType,errStr));
-}
-
-LispResultType newLRTSym(const std::string& symbol) {
-	return LispSymbol(symbol);
-}
-
-LispResultType getNum(mpc_ast_t* t) {
-	int errno;
-	int64_t x = strtol(t->contents, NULL, 10);
-	return errno != ERANGE ? newLRTInt(x) : newLRTError(LispError::LERR_BAD_NUM, "Bad number parsed");
-}
-
-LispResultType getLispResultAst(mpc_ast_t* t) {
-	/* If Symbol or Number return conversion to that type */
-	if (strstr(t->tag, "number")) {
-		return getNum(t);
-	}
-	if (strstr(t->tag, "symbol")) {
-		return newLRTSym(t->contents);
-	}
-
-	/* If root (>) or sexpr then create empty list */
-	LispResultType x = LispSExprVec();
-	//if (strcmp(t->tag, ">") == 0) { x = LispSExprVec(); }
-	//if (strstr(t->tag, "sexpr"))  { x = LispSExprVec(); }
-	/* Fill this list with any valid expression contained within */
-	for (int i = 0; i < t->children_num; i++) {
-		if (strcmp(t->children[i]->contents, "(") == 0) {
-			continue;
-		}
-		if (strcmp(t->children[i]->contents, ")") == 0) {
-			continue;
-		}
-		if (strcmp(t->children[i]->contents, "}") == 0) {
-			continue;
-		}
-		if (strcmp(t->children[i]->contents, "{") == 0) {
-			continue;
-		}
-		if (strcmp(t->children[i]->tag, "regex") == 0) {
-			continue;
-		}
-		boost::get<LispSExprVec>(x).push_back(getLispResultAst(t->children[i]));
-	}
-
-	return LispResultType(x);
-}
-
-class LispResultPrinter : public boost::static_visitor<> {
-	std::ostream& d_os;
-public:
-	LispResultPrinter(std::ostream& os) : d_os(os) {}
-
-	void operator()(int64_t i) const {
-		d_os << " " << i;
-	}
-
-	void operator()(LispError err) const {
-		d_os << " [" << err.d_errCode << ". " << err.d_errStr;
-	}
-
-	void operator()(LispSymbol sExpr) const {
-		d_os << " " << sExpr.d_symbol;
-	}
-
-	void operator()(LispSExprVec sExprVec) {
-		for(LispSExprVec::iterator it = sExprVec.begin(); it != sExprVec.end(); it++) {
-			if (it->which() == 3)
-				this->d_os << " (";
-			boost::apply_visitor(*const_cast<LispResultPrinter*>(this), *it);
-			if (it->which() == 3)
-				this->d_os << ")";
-		}
 	}
 };
 
@@ -177,6 +54,16 @@ LispResultType builtin_op(LispResultType a, const char* op) {
   return x;
 }
 
+LispResultType eval_op(LispResultType x);
+
+LispResultType evalSExpr(LispResultType res) {
+	if (res.which() == 3) {
+		return eval_op(res);
+	} else {
+		return res;
+	}
+}
+
 /* Use operator string to see which operation to perform */
 LispResultType eval_op(LispResultType x) {
 	try {
@@ -202,15 +89,7 @@ LispResultType eval_op(LispResultType x) {
 		return builtin_op(results, (boost::get<LispSymbol>(f)).d_symbol.c_str());
 
 	} catch (const std::exception& ex) {
-
-	}
-}
-
-LispResultType evalSExpr(LispResultType res) {
-	if (res.which() == 3) {
-		return eval_op(res);
-	} else {
-		return res;
+		return LispError(LispError::LERR_BAD_SYNTAX, "Bad Syntax!");
 	}
 }
 
@@ -219,6 +98,7 @@ int main(int argc, char** argv) {
 	MpcParser Number("number");
 	MpcParser Symbol("symbol");
 	MpcParser Sexpr("sexpr");
+	MpcParser Qexpr("qexpr");
 	MpcParser Expr("expr");
 	MpcParser Lispy("lispy");
 
@@ -227,6 +107,7 @@ int main(int argc, char** argv) {
 	    number : /-?[0-9]+/ ;                    \
 	    symbol : '+' | '-' | '*' | '/' ;         \
 	    sexpr  : '(' <expr>* ')' ;               \
+	    sexpr  : '{' <expr>* '}' ;               \
 	    expr   : <number> | <symbol> | <sexpr> ; \
 	    lispy  : /^/ <expr>* /$/ ;               \
 	  ",
