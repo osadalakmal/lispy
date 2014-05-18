@@ -46,10 +46,21 @@ public:
 	LispSymbol(const std::string& symbol) : d_symbol(symbol) {}
 };
 
-typedef boost::make_recursive_variant<LispError, int64_t, LispSymbol, std::deque<boost::recursive_variant_> >::type LispResultType;
-typedef std::shared_ptr<LispResultType> LispResultPtr;
+template <typename TYPE>
+class LispSExpr {
+public:
+	std::deque<TYPE> d_data;
+};
 
-typedef std::deque<LispResultType> LispSExprVec;
+template <typename TYPE>
+class LispQExpr {
+public:
+	std::deque<TYPE> d_data;
+};
+
+typedef boost::make_recursive_variant<LispError, int64_t, LispSymbol, LispSExpr<boost::recursive_variant_ >, LispQExpr<boost::recursive_variant_ > >::type LispResultType;
+typedef std::shared_ptr<LispResultType> LispResultPtr;
+typedef LispSExpr<LispResultType> LispSExpression;
 
 LispResultType newLRTInt(int64_t num);
 LispResultType newLRTError(LispError::ERROR_TYPE errType, const std::string& errStr);
@@ -63,8 +74,9 @@ public:
 	LispResultPrinter(std::ostream& os);
 	void operator()(int64_t i) const;
 	void operator()(LispError err) const;
-	void operator()(LispSymbol sExpr) const;
-	void operator()(LispSExprVec sExprVec);
+	void operator()(LispSymbol symbol) const;
+	void operator()(LispSExpr<LispResultType> sExpr);
+	void operator()(LispQExpr<LispResultType> qExpr);
 };
 
 }

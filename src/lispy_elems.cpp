@@ -20,6 +20,14 @@ LispResultType newLRTSym(const std::string& symbol) {
 	return LispSymbol(symbol);
 }
 
+LispResultType newLRTSexpr() {
+	return LispSExpr<LispResultType>();
+}
+
+LispResultType newLRTQexpr() {
+	return LispQExpr<LispResultType>();
+}
+
 LispResultType getNum(mpc_ast_t* t) {
 	int64_t x = strtol(t->contents, NULL, 10);
 	return ( errno != ERANGE ? newLRTInt(x) : newLRTError(LispError::LERR_BAD_NUM, "Bad number parsed"));
@@ -35,7 +43,7 @@ LispResultType getLispResultAst(mpc_ast_t* t) {
 	}
 
 	/* If root (>) or sexpr then create empty list */
-	LispResultType x = LispSExprVec();
+	LispResultType x = LispSExpr<LispResultType>();
 	//if (strcmp(t->tag, ">") == 0) { x = LispSExprVec(); }
 	//if (strstr(t->tag, "sexpr"))  { x = LispSExprVec(); }
 	/* Fill this list with any valid expression contained within */
@@ -55,7 +63,7 @@ LispResultType getLispResultAst(mpc_ast_t* t) {
 		if (strcmp(t->children[i]->tag, "regex") == 0) {
 			continue;
 		}
-		boost::get<LispSExprVec>(x).push_back(getLispResultAst(t->children[i]));
+		boost::get<LispSExpr<LispResultType> >(x).d_data.push_back(getLispResultAst(t->children[i]));
 	}
 
 	return LispResultType(x);
@@ -75,8 +83,18 @@ void LispResultPrinter::operator()(LispSymbol sExpr) const {
 	d_os << " " << sExpr.d_symbol;
 }
 
-void LispResultPrinter::operator()(LispSExprVec sExprVec) {
-	for(LispSExprVec::iterator it = sExprVec.begin(); it != sExprVec.end(); it++) {
+void LispResultPrinter::operator()(LispSExpr<LispResultType> sExpr) {
+	for(auto it = sExpr.d_data.begin(); it != sExpr.d_data.end(); it++) {
+		if (it->which() == 3)
+			this->d_os << " (";
+		boost::apply_visitor(*const_cast<LispResultPrinter*>(this), *it);
+		if (it->which() == 3)
+			this->d_os << ")";
+	}
+}
+
+void LispResultPrinter::operator()(LispQExpr<LispResultType> qExpr) {
+	for(auto it = qExpr.d_data.begin(); it != qExpr.d_data.end(); it++) {
 		if (it->which() == 3)
 			this->d_os << " (";
 		boost::apply_visitor(*const_cast<LispResultPrinter*>(this), *it);

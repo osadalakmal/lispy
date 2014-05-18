@@ -15,43 +15,50 @@ public:
 
 LispResultType builtin_op(LispResultType a, const char* op) {
 
-  /* Ensure all arguments are numbers */
-	LispSExprVec resVec = boost::get<LispSExprVec>(a);
-  for (unsigned int i = 0; i < resVec.size(); i++) {
-    if (resVec[i].which() != 1) {
-      return LispError(LispError::LERR_BAD_SYNTAX, "Cannot operator on non number!");
-    }
-  }
+	/* Ensure all arguments are numbers */
+	auto resVec = boost::get<LispSExpression>(a).d_data;
+	for (unsigned int i = 0; i < resVec.size(); i++) {
+		if (resVec[i].which() != 1) {
+			return LispError(LispError::LERR_BAD_SYNTAX, "Cannot operator on non number!");
+		}
+	}
 
-  /* Pop the first element */
-  LispResultType x = resVec.front();
-  resVec.pop_front();
+	/* Pop the first element */
+	LispResultType x = resVec.front();
+	resVec.pop_front();
 
-  /* If no arguments and sub then perform unary negation */
-  if ((strcmp(op, "-") == 0) && resVec.size() == 0) {
-	  x = -(boost::get<int64_t>(x));
-  }
+	/* If no arguments and sub then perform unary negation */
+	if ((strcmp(op, "-") == 0) && resVec.size() == 0) {
+		x = -(boost::get<int64_t>(x));
+	}
 
-  /* While there are still elements remaining */
-  while (!resVec.empty()) {
+	/* While there are still elements remaining */
+	while (!resVec.empty()) {
 
-    /* Pop the next element */
-    LispResultType y = resVec.front();
-    resVec.pop_front();
+		/* Pop the next element */
+		LispResultType y = resVec.front();
+		resVec.pop_front();
 
-    /* Perform operation */
-    if (strcmp(op, "+") == 0) { boost::get<int64_t>(x) += boost::get<int64_t>(y); }
-    if (strcmp(op, "-") == 0) { boost::get<int64_t>(x) -= boost::get<int64_t>(y); }
-    if (strcmp(op, "*") == 0) { boost::get<int64_t>(x) *= boost::get<int64_t>(y); }
-    if (strcmp(op, "/") == 0) {
-      if (boost::get<int64_t>(y) == 0) {
-        x = LispError(LispError::LERR_DIV_ZERO, "Division By Zero!"); break;
-      }
-      boost::get<int64_t>(x) /= boost::get<int64_t>(y);
-    }
-  }
+		/* Perform operation */
+		if (strcmp(op, "+") == 0) {
+			boost::get<int64_t>(x) += boost::get<int64_t>(y);
+		}
+		if (strcmp(op, "-") == 0) {
+			boost::get<int64_t>(x) -= boost::get<int64_t>(y);
+		}
+		if (strcmp(op, "*") == 0) {
+			boost::get<int64_t>(x) *= boost::get<int64_t>(y);
+		}
+		if (strcmp(op, "/") == 0) {
+			if (boost::get<int64_t>(y) == 0) {
+				x = LispError(LispError::LERR_DIV_ZERO, "Division By Zero!");
+				break;
+			}
+			boost::get<int64_t>(x) /= boost::get<int64_t>(y);
+		}
+	}
 
-  return x;
+	return x;
 }
 
 LispResultType eval_op(LispResultType x);
@@ -67,11 +74,11 @@ LispResultType evalSExpr(LispResultType res) {
 /* Use operator string to see which operation to perform */
 LispResultType eval_op(LispResultType x) {
 	try {
-		LispSExprVec results = boost::get<LispSExprVec>(x);
+		std::deque<LispResultType>& results = boost::get<LispSExpression>(x).d_data;
 		if (results.empty()) {
 			return x;
 		}
-		for(LispSExprVec::iterator it = results.begin(); it != results.end(); it++) {
+		for (auto it = results.begin(); it != results.end(); it++) {
 			*it = evalSExpr(*it);
 			if ((*it).which() == 0) {
 				return *it;
@@ -86,7 +93,7 @@ LispResultType eval_op(LispResultType x) {
 		}
 		LispResultType f = results.front();
 		results.pop_front();
-		return builtin_op(results, (boost::get<LispSymbol>(f)).d_symbol.c_str());
+		return builtin_op(x, (boost::get<LispSymbol>(f)).d_symbol.c_str());
 
 	} catch (const std::exception& ex) {
 		return LispError(LispError::LERR_BAD_SYNTAX, "Bad Syntax!");
@@ -103,7 +110,7 @@ int main(int argc, char** argv) {
 	MpcParser Lispy("lispy");
 
 	mpca_lang(MPCA_LANG_DEFAULT,
-	  "                                          \
+			"                                          \
 	    number : /-?[0-9]+/ ;                    \
 	    symbol : '+' | '-' | '*' | '/' ;         \
 	    sexpr  : '(' <expr>* ')' ;               \
@@ -111,7 +118,7 @@ int main(int argc, char** argv) {
 	    expr   : <number> | <symbol> | <sexpr> ; \
 	    lispy  : /^/ <expr>* /$/ ;               \
 	  ",
-	  Number.get(), Symbol.get(), Sexpr.get(), Expr.get(), Lispy.get());
+			Number.get(), Symbol.get(), Sexpr.get(), Expr.get(), Lispy.get());
 
 	/* Print Version and Exit Information */
 	puts("Lispy Version 0.0.0.0.1");
@@ -132,10 +139,10 @@ int main(int argc, char** argv) {
 		mpc_result_t r;
 		if (mpc_parse("<stdin>", input, Lispy.get(), &r)) {
 			/* On Success Print the AST */
-			LispResultType result = eval_op(getLispResultAst((mpc_ast_t*)r.output));
+			LispResultType result = eval_op(getLispResultAst((mpc_ast_t*) r.output));
 			LispResultPrinter printer(std::cout);
 			std::cout << "(";
-			boost::apply_visitor( printer, result);
+			boost::apply_visitor(printer, result);
 			std::cout << ")\n";
 			mpc_ast_delete((mpc_ast_t*) r.output);
 		} else {
