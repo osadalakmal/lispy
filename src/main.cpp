@@ -1,4 +1,5 @@
 #include "lispy_elems.h"
+#include "lispy_operators.h"
 
 using namespace lispy;
 
@@ -12,98 +13,6 @@ public:
 		return d_parser.get();
 	}
 };
-
-LispResultType builtin_op(LispResultType a, const char* op) {
-
-	/* Ensure all arguments are numbers */
-	auto resVec = boost::get<LispSExpression>(a).d_data;
-	for (unsigned int i = 0; i < resVec.size(); i++) {
-		if (resVec[i].which() != 1) {
-			return LispError(LispError::LERR_BAD_SYNTAX, "Cannot operator on non number!");
-		}
-	}
-
-	/* Pop the first element */
-	LispResultType x = resVec.front();
-	resVec.pop_front();
-
-	/* If no arguments and sub then perform unary negation */
-	if ((strcmp(op, "-") == 0) && resVec.size() == 0) {
-		x = -(boost::get<int64_t>(x));
-	}
-
-	/* While there are still elements remaining */
-	while (!resVec.empty()) {
-
-		/* Pop the next element */
-		LispResultType y = resVec.front();
-		resVec.pop_front();
-
-		/* Perform operation */
-		if (strcmp(op, "+") == 0) {
-			boost::get<int64_t>(x) += boost::get<int64_t>(y);
-		}
-		if (strcmp(op, "-") == 0) {
-			boost::get<int64_t>(x) -= boost::get<int64_t>(y);
-		}
-		if (strcmp(op, "*") == 0) {
-			boost::get<int64_t>(x) *= boost::get<int64_t>(y);
-		}
-		if (strcmp(op, "/") == 0) {
-			if (boost::get<int64_t>(y) == 0) {
-				x = LispError(LispError::LERR_DIV_ZERO, "Division By Zero!");
-				break;
-			}
-			boost::get<int64_t>(x) /= boost::get<int64_t>(y);
-		}
-	}
-
-	return x;
-}
-
-LispResultType eval_op(LispResultType x);
-
-LispResultType evalSExpr(LispResultType res) {
-	if (res.which() == 3) {
-		return eval_op(res);
-	} else {
-		return res;
-	}
-}
-
-/* Use operator string to see which operation to perform */
-LispResultType eval_op(LispResultType x) {
-	try {
-		std::deque<LispResultType>* results = NULL;
-		if (x.which() == 3) {
-			results = &(boost::get<LispSExpression>(x).d_data);
-		} else if (x.which() == 4) {
-			results = &(boost::get<LispQExpression>(x).d_data);
-		}
-		if (results->empty()) {
-			return x;
-		}
-		for (auto it = results->begin(); it != results->end(); it++) {
-			*it = evalSExpr(*it);
-			if ((*it).which() == 0) {
-				return *it;
-			}
-		}
-		if (results->size() == 1) {
-			return (*results)[0];
-		}
-		if (results->front().which() != 2) {
-			results->pop_front();
-			return LispError(LispError::LERR_BAD_SYNTAX, "S-expression does not start with a syymbol!");
-		}
-		LispResultType f = results->front();
-		results->pop_front();
-		return builtin_op(x, (boost::get<LispSymbol>(f)).d_symbol.c_str());
-
-	} catch (const std::exception& ex) {
-		return LispError(LispError::LERR_BAD_SYNTAX, "Bad Syntax!");
-	}
-}
 
 int main(int argc, char** argv) {
 
@@ -144,7 +53,9 @@ int main(int argc, char** argv) {
 		mpc_result_t r;
 		if (mpc_parse("<stdin>", input, Lispy.get(), &r)) {
 			/* On Success Print the AST */
-			LispResultType result = eval_op(getLispResultAst((mpc_ast_t*) r.output));
+			lispy::OperatorEval opEvaluator;
+			LispResultType resultTemp = getLispResultAst((mpc_ast_t*) r.output);
+			LispResultType result = boost::apply_visitor(opEvaluator, resultTemp);
 			LispResultPrinter printer(std::cout);
 			std::cout << "(";
 			boost::apply_visitor(printer, result);

@@ -100,10 +100,10 @@ void LispResultPrinter::operator()(LispSExpr<LispResultType> sExpr) {
 
 void LispResultPrinter::operator()(LispQExpr<LispResultType> qExpr) {
 	for(auto it = qExpr.d_data.begin(); it != qExpr.d_data.end(); it++) {
-		if (it->which() == 3)
+		if (it->which() == 4)
 			this->d_os << " {";
 		boost::apply_visitor(*const_cast<LispResultPrinter*>(this), *it);
-		if (it->which() == 3)
+		if (it->which() == 4)
 			this->d_os << "}";
 	}
 }
