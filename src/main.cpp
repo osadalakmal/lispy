@@ -74,25 +74,30 @@ LispResultType evalSExpr(LispResultType res) {
 /* Use operator string to see which operation to perform */
 LispResultType eval_op(LispResultType x) {
 	try {
-		std::deque<LispResultType>& results = boost::get<LispSExpression>(x).d_data;
-		if (results.empty()) {
+		std::deque<LispResultType>* results = NULL;
+		if (x.which() == 3) {
+			results = &(boost::get<LispSExpression>(x).d_data);
+		} else if (x.which() == 4) {
+			results = &(boost::get<LispQExpression>(x).d_data);
+		}
+		if (results->empty()) {
 			return x;
 		}
-		for (auto it = results.begin(); it != results.end(); it++) {
+		for (auto it = results->begin(); it != results->end(); it++) {
 			*it = evalSExpr(*it);
 			if ((*it).which() == 0) {
 				return *it;
 			}
 		}
-		if (results.size() == 1) {
-			return results[0];
+		if (results->size() == 1) {
+			return (*results)[0];
 		}
-		if (results.front().which() != 2) {
-			results.pop_front();
+		if (results->front().which() != 2) {
+			results->pop_front();
 			return LispError(LispError::LERR_BAD_SYNTAX, "S-expression does not start with a syymbol!");
 		}
-		LispResultType f = results.front();
-		results.pop_front();
+		LispResultType f = results->front();
+		results->pop_front();
 		return builtin_op(x, (boost::get<LispSymbol>(f)).d_symbol.c_str());
 
 	} catch (const std::exception& ex) {
@@ -114,11 +119,11 @@ int main(int argc, char** argv) {
 	    number : /-?[0-9]+/ ;                    \
 	    symbol : '+' | '-' | '*' | '/' ;         \
 	    sexpr  : '(' <expr>* ')' ;               \
-	    sexpr  : '{' <expr>* '}' ;               \
-	    expr   : <number> | <symbol> | <sexpr> ; \
+	    qexpr  : '{' <expr>* '}' ;               \
+	    expr   : <number> | <symbol> | <sexpr> | <qexpr> ; \
 	    lispy  : /^/ <expr>* /$/ ;               \
 	  ",
-			Number.get(), Symbol.get(), Sexpr.get(), Expr.get(), Lispy.get());
+			Number.get(), Symbol.get(), Sexpr.get(), Qexpr.get(), Expr.get(), Lispy.get());
 
 	/* Print Version and Exit Information */
 	puts("Lispy Version 0.0.0.0.1");

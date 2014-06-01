@@ -61,6 +61,7 @@ public:
 typedef boost::make_recursive_variant<LispError, int64_t, LispSymbol, LispSExpr<boost::recursive_variant_ >, LispQExpr<boost::recursive_variant_ > >::type LispResultType;
 typedef std::shared_ptr<LispResultType> LispResultPtr;
 typedef LispSExpr<LispResultType> LispSExpression;
+typedef LispQExpr<LispResultType> LispQExpression;
 
 LispResultType newLRTInt(int64_t num);
 LispResultType newLRTError(LispError::ERROR_TYPE errType, const std::string& errStr);

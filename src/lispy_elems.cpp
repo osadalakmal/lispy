@@ -44,10 +44,10 @@ LispResultType getLispResultAst(mpc_ast_t* t) {
 
 	/* If root (>) or sexpr then create empty list */
 	LispResultType x = LispSExpr<LispResultType>();
-	//if (strcmp(t->tag, ">") == 0) { x = LispSExprVec(); }
-	//if (strstr(t->tag, "sexpr"))  { x = LispSExprVec(); }
-	/* Fill this list with any valid expression contained within */
 	for (int i = 0; i < t->children_num; i++) {
+		if (strcmp(t->children[i]->tag,"qexpr|>") == 0) {
+			x = LispQExpr<LispResultType>();
+		}
 		if (strcmp(t->children[i]->contents, "(") == 0) {
 			continue;
 		}
@@ -58,12 +58,17 @@ LispResultType getLispResultAst(mpc_ast_t* t) {
 			continue;
 		}
 		if (strcmp(t->children[i]->contents, "{") == 0) {
+			x = LispQExpr<LispResultType>();
 			continue;
 		}
 		if (strcmp(t->children[i]->tag, "regex") == 0) {
 			continue;
 		}
-		boost::get<LispSExpr<LispResultType> >(x).d_data.push_back(getLispResultAst(t->children[i]));
+		if (x.which() == 3) {
+			boost::get<LispSExpr<LispResultType> >(x).d_data.push_back(getLispResultAst(t->children[i]));
+		} else if (x.which() == 4) {
+			boost::get<LispQExpr<LispResultType> >(x).d_data.push_back(getLispResultAst(t->children[i]));
+		}
 	}
 
 	return LispResultType(x);
@@ -96,10 +101,10 @@ void LispResultPrinter::operator()(LispSExpr<LispResultType> sExpr) {
 void LispResultPrinter::operator()(LispQExpr<LispResultType> qExpr) {
 	for(auto it = qExpr.d_data.begin(); it != qExpr.d_data.end(); it++) {
 		if (it->which() == 3)
-			this->d_os << " (";
+			this->d_os << " {";
 		boost::apply_visitor(*const_cast<LispResultPrinter*>(this), *it);
 		if (it->which() == 3)
-			this->d_os << ")";
+			this->d_os << "}";
 	}
 }
 
