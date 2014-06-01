@@ -77,7 +77,7 @@ LispResultType getLispResultAst(mpc_ast_t* t) {
 LispResultPrinter::LispResultPrinter(std::ostream& os) : d_os(os) {}
 
 void LispResultPrinter::operator()(int64_t i) const {
-	d_os << " " << i;
+	d_os << " " << i << " ";
 }
 
 void LispResultPrinter::operator()(LispError err) const {
@@ -85,27 +85,23 @@ void LispResultPrinter::operator()(LispError err) const {
 }
 
 void LispResultPrinter::operator()(LispSymbol sExpr) const {
-	d_os << " " << sExpr.d_symbol;
+	d_os << " " << sExpr.d_symbol << " ";
 }
 
 void LispResultPrinter::operator()(LispSExpr<LispResultType> sExpr) {
+	this->d_os << " (";
 	for(auto it = sExpr.d_data.begin(); it != sExpr.d_data.end(); it++) {
-		if (it->which() == 3)
-			this->d_os << " (";
 		boost::apply_visitor(*const_cast<LispResultPrinter*>(this), *it);
-		if (it->which() == 3)
-			this->d_os << ")";
 	}
+	this->d_os << ")";
 }
 
 void LispResultPrinter::operator()(LispQExpr<LispResultType> qExpr) {
+	this->d_os << " {";
 	for(auto it = qExpr.d_data.begin(); it != qExpr.d_data.end(); it++) {
-		if (it->which() == 4)
-			this->d_os << " {";
 		boost::apply_visitor(*const_cast<LispResultPrinter*>(this), *it);
-		if (it->which() == 4)
-			this->d_os << "}";
 	}
+	this->d_os << "}";
 }
 
 }

@@ -57,9 +57,8 @@ int main(int argc, char** argv) {
 			LispResultType resultTemp = getLispResultAst((mpc_ast_t*) r.output);
 			LispResultType result = boost::apply_visitor(opEvaluator, resultTemp);
 			LispResultPrinter printer(std::cout);
-			std::cout << "(";
 			boost::apply_visitor(printer, result);
-			std::cout << ")\n";
+			std::cout << "\n";
 			mpc_ast_delete((mpc_ast_t*) r.output);
 		} else {
 			/* Otherwise Print the Error */
