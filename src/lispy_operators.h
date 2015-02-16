@@ -1,0 +1,6 @@
+#ifndef LISPY_OPERATORS_H
+#define LISPY_OPERATORS_H
+
+
+
+#endif //LISPY_OPERATORS_H

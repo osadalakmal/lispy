@@ -1,5 +1,6 @@
 #include "lispy_elems.h"
 #include "lispy_operators.h"
+#include "operator_eval.h"
 
 using namespace lispy;
 
